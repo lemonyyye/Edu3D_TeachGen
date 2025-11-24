@@ -1,158 +1,373 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>电子云模型-水分子（支持glTF导出）</title>
+    <title>Planet Size Comparison 3D Model - Three.js</title>
+    <!-- Import Three.js library -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    <!-- 添加GLTF导出器 -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/exporters/GLTFExporter.js"></script>
+    <!-- 添加文件保存库 -->
     <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
-        #container { width: 100vw; height: 100vh; }
-        #controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 10; background: rgba(40,40,40,0.8); padding: 10px; border-radius: 20px; }
-        button { margin: 0 5px; padding: 8px 15px; border: none; border-radius: 15px; cursor: pointer; background: #444; color: #eee; transition: all 0.2s; }
-        button:hover { background: #666; color: #fff; }
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0a0a1a;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #info {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            z-index: 100;
+            font-size: 1.3em;
+            text-shadow: 0 0 15px #000;
+            line-height: 1.5;
+        }
+
+        #planetLabels {
+            position: absolute;
+            bottom: 120px; /* 调整位置给新按钮腾出空间 */
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            gap: 25px;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 80%;
+        }
+
+        .label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(30, 30, 60, 0.8);
+            padding: 8px 15px;
+            border-radius: 20px;
+            backdrop-filter: blur(5px);
+            font-size: 0.9em;
+        }
+
+        .colorDot {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+        }
+
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: rgba(30, 30, 60, 0.85);
+            padding: 10px 20px;
+            border-radius: 25px;
+            backdrop-filter: blur(5px);
+        }
+
+        #controls button {
+            background: #4a4a8a;
+            color: #eee;
+            border: none;
+            padding: 8px 15px;
+            margin: 0 5px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.2s ease-in-out;
+        }
+
+        #controls button:hover {
+            background: #6a6ac8;
+            color: #fff;
+            transform: translateY(-2px);
+        }
+
+        #exportBtn {
+            background: #2ecc71; /* 导出按钮用不同颜色标识 */
+        }
+
+        #exportBtn:hover {
+            background: #27ae60;
+        }
+
+        .sizeInfo {
+            font-size: 0.8em;
+            color: #ccc;
+            margin-top: 5px;
+        }
     </style>
 </head>
+
 <body>
     <div id="container"></div>
+    <div id="info">
+        Planet Size Comparison Model (True Scale)<br>
+        <span class="sizeInfo">Jupiter ≈ 11x Earth's diameter | Click on planets for details</span>
+    </div>
+
+    <div id="planetLabels">
+        <div class="label">
+            <div class="colorDot" style="background-color: #e6b89c;"></div>
+            <span>Jupiter</span>
+        </div>
+        <div class="label">
+            <div class="colorDot" style="background-color: #4a90e2;"></div>
+            <span>Earth</span>
+        </div>
+        <div class="label">
+            <div class="colorDot" style="background-color: #f5a623;"></div>
+            <span>Venus</span>
+        </div>
+        <div class="label">
+            <div class="colorDot" style="background-color: #e74c3c;"></div>
+            <span>Mars</span>
+        </div>
+    </div>
+
     <div id="controls">
-        <button id="reset">重置视角</button>
-        <button id="rotate">暂停旋转</button>
-        <button id="zoomIn">放大</button>
-        <button id="zoomOut">缩小</button>
-        <button id="export">导出glTF</button>
+        <button id="resetView">Reset View</button>
+        <button id="toggleRotation">Pause Rotation</button>
+        <button id="zoomIn">Zoom In</button>
+        <button id="zoomOut">Zoom Out</button>
+        <button id="exportBtn">Export GLTF</button> <!-- 添加导出按钮 -->
     </div>
 
     <script>
-        // 初始化场景
+        // 1. Initialize Scene
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        scene.background = new THREE.Color(0x0a0a1a);
+        scene.fog = new THREE.Fog(0x0a0a1a, 20, 100); // 保留黑色背景
+
+        // 2. Initialize Camera
+        const camera = new THREE.PerspectiveCamera(
+            75,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+        camera.position.set(0, 8, 30);
+
+        // 3. Initialize Renderer
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.shadowMap.enabled = true;
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.getElementById('container').appendChild(renderer.domElement);
 
-        // 控制器
+        // 4. Orbit Controls
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
-        camera.position.set(0, 3, 8);
+        controls.minDistance = 15;
+        controls.maxDistance = 60;
 
-        // 光源
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        // 5. Lighting Configuration (Simulate Solar System Lighting)
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
         scene.add(ambientLight);
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        directionalLight.position.set(5, 10, 7.5);
-        directionalLight.castShadow = true;
-        scene.add(directionalLight);
 
-        // 电子云模型参数
-        const atomParams = {
-            O: { 
-                radius: 0.8, 
-                color: 0xff4444, 
-                cloudRadius: 2.0, 
-                cloudColor: 0xff8888,
-                name: 'Oxygen' 
+        const sunLight = new THREE.DirectionalLight(0xffffbb, 1.2);
+        sunLight.position.set(20, 30, 40);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        scene.add(sunLight);
+
+        const fillLight = new THREE.PointLight(0x4488ff, 0.4, 100);
+        fillLight.position.set(-30, -20, 20);
+        scene.add(fillLight);
+
+        // 6. Planet Data (Based on true scale from PPT, unit: mm → scaled for 3D scene)
+        const planetData = [
+            {
+                name: 'Jupiter',
+                diameter: 96, // Diameter as labeled in PPT
+                scale: 0.15, // Scene scale factor (to avoid being too large)
+                color: 0xe6b89c, // Tan/yellow
+                positionX: 15,
+                info: 'Diameter ~96mm, 11x larger than Earth\nGas giant, largest planet in Solar System'
             },
-            H: { 
-                radius: 0.5, 
-                color: 0xffffff, 
-                cloudRadius: 1.2, 
-                cloudColor: 0xeeeeee,
-                name: 'Hydrogen' 
+            {
+                name: 'Earth',
+                diameter: 8.6,
+                scale: 0.15,
+                color: 0x4a90e2, // Blue
+                positionX: 5,
+                info: 'Diameter ~8.6mm\nRocky planet with atmosphere and liquid water'
+            },
+            {
+                name: 'Venus',
+                diameter: 8.2,
+                scale: 0.15,
+                color: 0xf5a623, // Golden yellow
+                positionX: -5,
+                info: 'Diameter ~8.2mm, similar size to Earth\nCovered by thick carbon dioxide atmosphere'
+            },
+            {
+                name: 'Mars',
+                diameter: 4.6,
+                scale: 0.15,
+                color: 0xe74c3c, // Red
+                positionX: -15,
+                info: 'Diameter ~4.6mm, half the size of Earth\nKnown as the "Red Planet" with thin atmosphere'
             }
-        };
-        const hDistance = 2.0;
-        const bondAngle = Math.PI / 3.5;
+        ];
 
-        // 创建原子（包含电子云）
-        function createAtom(type) {
-            const { radius, color, cloudRadius, cloudColor, name } = atomParams[type];
+        // 7. Create Planet Model Group
+        const planetsGroup = new THREE.Group();
+        scene.add(planetsGroup);
+
+        // Planet click detection
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let selectedPlanet = null;
+        const infoDiv = document.getElementById('info');
+        const originalInfoText = infoDiv.innerHTML;
+
+        // 8. Create Planet Model
+        function createPlanet(planet) {
+            const planetGroup = new THREE.Group();
+            planetGroup.name = planet.name; // 设置GroupName用于导出时保留名称
+
+            // Planet sphere (with surface details)
+            const radius = (planet.diameter / 2) * planet.scale;
+            const geometry = new THREE.SphereGeometry(radius, 64, 64);
             
-            // 原子核心
-            const coreGeo = new THREE.SphereGeometry(radius, 32, 32);
-            const coreMat = new THREE.MeshPhongMaterial({ 
-                color: color, 
-                shininess: 100,
-                specular: 0x333333
+            // Material: simulate planetary surface texture (no external images needed)
+            const material = new THREE.MeshPhongMaterial({
+                color: planet.color,
+                shininess: 60,
+                specular: 0x333333,
+                flatShading: false
             });
-            const core = new THREE.Mesh(coreGeo, coreMat);
-            core.name = name;
-            core.castShadow = true;
-            core.receiveShadow = true;
 
-            // 电子云
-            const cloudGeo = new THREE.SphereGeometry(cloudRadius, 32, 32);
-            const cloudMat = new THREE.MeshPhongMaterial({ 
-                color: cloudColor, 
-                transparent: true, 
-                opacity: 0.3,
-                depthWrite: false,
-                shininess: 50
-            });
-            const cloud = new THREE.Mesh(cloudGeo, cloudMat);
-            core.add(cloud);
+            const planetMesh = new THREE.Mesh(geometry, material);
+            planetMesh.name = planet.name; // 设置Mesh名称用于导出时保留名称
+            planetMesh.castShadow = true;
+            planetMesh.receiveShadow = true;
 
-            return core;
+            // Add surface bumpiness (simulate terrain/clouds)
+            const bumpMap = new THREE.CanvasTexture(generateBumpMap(256, 256));
+            material.bumpMap = bumpMap;
+            material.bumpScale = radius * 0.1; // Bump intensity scales with planet size
+
+            planetGroup.add(planetMesh);
+            planetGroup.position.x = planet.positionX;
+            planetGroup.userData = { ...planet, mesh: planetMesh }; // Store planet data
+
+            // Click event listener
+            planetMesh.addEventListener('click', () => onPlanetClick(planet));
+
+            planetsGroup.add(planetGroup);
+            return planetGroup;
         }
 
-        // 组装分子
-        const molecule = new THREE.Group();
-        molecule.name = 'WaterMolecule';
+        // Helper function: generate bump texture (simulate planetary surface details)
+        function generateBumpMap(width, height) {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
 
-        const oxygen = createAtom('O');
-        molecule.add(oxygen);
+            // Generate random noise texture
+            const imageData = ctx.createImageData(width, height);
+            const data = imageData.data;
 
-        const hydrogen1 = createAtom('H');
-        hydrogen1.position.set(
-            -hDistance * Math.sin(bondAngle / 2),
-            0,
-            hDistance * Math.cos(bondAngle / 2)
-        );
-        molecule.add(hydrogen1);
-
-        const hydrogen2 = createAtom('H');
-        hydrogen2.position.set(
-            hDistance * Math.sin(bondAngle / 2),
-            0,
-            -hDistance * Math.cos(bondAngle / 2)
-        );
-        molecule.add(hydrogen2);
-
-        scene.add(molecule);
-
-        // 动画
-        let isRotating = true;
-        function animate() {
-            requestAnimationFrame(animate);
-            if (isRotating) {
-                molecule.rotation.y += 0.005;
-                molecule.rotation.x += 0.002;
+            for (let i = 0; i < data.length; i += 4) {
+                const noise = Math.random() * 60 + 195; // Grayscale noise
+                data[i] = noise;     // R
+                data[i + 1] = noise; // G
+                data[i + 2] = noise; // B
+                data[i + 3] = 255;   // A
             }
-            controls.update();
-            renderer.render(scene, camera);
-        }
-        animate();
 
-        // 事件监听
+            ctx.putImageData(imageData, 0, 0);
+            return canvas;
+        }
+
+        // Planet click event
+        function onPlanetClick(planet) {
+            selectedPlanet = planet;
+            infoDiv.innerHTML = `
+                <strong>${planet.name}</strong><br>
+                Model Diameter: ${planet.diameter}mm (True Scale)<br>
+                ${planet.info.split('\n').join('<br>')}
+            `;
+        }
+
+        // 9. Create all planets
+        planetData.forEach(planet => createPlanet(planet));
+
+        // 10. Window resize handler
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        document.getElementById('reset').addEventListener('click', () => {
-            camera.position.set(0, 3, 8);
-            controls.reset();
+        // 11. Mouse click detection (for planet selection)
+        window.addEventListener('click', (event) => {
+            // Convert mouse coordinates to Three.js coordinate system
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+
+            // Detect intersections with planets
+            const intersects = raycaster.intersectObjects(
+                planetsGroup.children.map(group => group.userData.mesh)
+            );
+
+            if (intersects.length === 0) {
+                // Restore original info when clicking empty space
+                infoDiv.innerHTML = originalInfoText;
+                selectedPlanet = null;
+            }
         });
 
-        document.getElementById('rotate').addEventListener('click', (e) => {
+        // 12. Animation loop
+        let isRotating = true;
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (isRotating) {
+                // Overall slow rotation
+                planetsGroup.rotation.y += 0.003;
+                // Individual planet rotation
+                planetsGroup.children.forEach(group => {
+                    group.userData.mesh.rotation.y += 0.008;
+                });
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // 13. Control button events
+        document.getElementById('resetView').addEventListener('click', () => {
+            camera.position.set(0, 8, 30);
+            controls.reset();
+            infoDiv.innerHTML = originalInfoText;
+            selectedPlanet = null;
+        });
+
+        document.getElementById('toggleRotation').addEventListener('click', (e) => {
             isRotating = !isRotating;
-            e.target.textContent = isRotating ? '暂停旋转' : '开始旋转';
+            e.target.textContent = isRotating ? 'Pause Rotation' : 'Start Rotation';
         });
 
         document.getElementById('zoomIn').addEventListener('click', () => {
@@ -163,15 +378,48 @@
             camera.position.multiplyScalar(1.1);
         });
 
-        // 导出glTF
-        document.getElementById('export').addEventListener('click', () => {
+        // 14. 添加GLTF导出功能
+        document.getElementById('exportBtn').addEventListener('click', exportGLTF);
+
+        function exportGLTF() {
+            // 创建导出器实例
             const exporter = new THREE.GLTFExporter();
-            exporter.parse(scene, (result) => {
-                const output = JSON.stringify(result, null, 2);
-                const blob = new Blob([output], { type: 'application/json' });
-                saveAs(blob, 'water_molecule_electron_cloud.gltf');
-            }, { trs: true, onlyVisible: true });
-        });
+            
+            // 配置导出选项
+            const options = {
+                trs: true,
+                onlyVisible: true,
+                binary: false, // 导出glTF格式而非glb
+                includeCustomProperties: true
+            };
+
+            // 导出行星组（包含所有行星）
+            exporter.parse(planetsGroup, (result) => {
+                if (result instanceof ArrayBuffer) {
+                    // 二进制格式 (glb)
+                    saveArrayBuffer(result, 'planets.glb');
+                } else {
+                    // JSON格式 (gltf)
+                    const output = JSON.stringify(result, null, 2);
+                    saveString(output, 'planets.gltf');
+                }
+            }, options);
+        }
+
+        // 辅助函数：保存字符串为文件
+        function saveString(text, filename) {
+            const blob = new Blob([text], { type: 'text/plain' });
+            saveAs(blob, filename);
+        }
+
+        // 辅助函数：保存ArrayBuffer为文件
+        function saveArrayBuffer(buffer, filename) {
+            const blob = new Blob([buffer], { type: 'application/octet-stream' });
+            saveAs(blob, filename);
+        }
+
+        // 15. Start animation
+        animate();
     </script>
 </body>
 </html>

@@ -688,9 +688,9 @@
                     "./models/planet/3.jpg"
                 ],
                 modelUrls: [
-                    "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Cube/glTF/Cube.gltf",
-                    "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Cylinder/glTF/Cylinder.gltf",
-                    "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Cone/glTF/Cone.gltf"
+                    "./models/planet/1.gltf",
+                    "./models/planet/2.gltf",
+                    "./models/planet/3.gltf"
                 ],
                 variants: [
                     { printTime: "30 min", material: "20g PLA", printability: "high", complexity: "medium" },
@@ -834,7 +834,6 @@
         
         // 创建水分子结构
         function createWaterMolecule() {
-            console.log(6666);
             
             const group = new THREE.Group();
             
