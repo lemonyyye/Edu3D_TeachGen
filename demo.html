@@ -1,0 +1,1430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM-to-3D: Text-Driven Teaching Aids</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- 添加Three.js库用于3D渲染 -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1e40af', // 深蓝主色
+                        secondary: '#64748b', // 灰色辅助色
+                        accent: '#f97316', // 橙色强调色
+                        light: '#f8fafc',
+                        dark: '#0f172a'
+                    },
+                    fontFamily: {
+                        arial: ['Arial', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .card-shadow {
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            }
+            .transition-all-300 {
+                transition: all 0.3s ease;
+            }
+            .model-rotate {
+                animation: rotate 20s linear infinite;
+            }
+            @keyframes rotate {
+                0% { transform: rotateY(0deg); }
+                100% { transform: rotateY(360deg); }
+            }
+            /* 3D容器样式 */
+            .model-container {
+                width: 100%;
+                height: 100%;
+                background-color: #f1f5f9;
+                border-radius: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body class="font-arial bg-gray-100 min-h-screen" id="appBody">
+    <!-- 顶部导航栏 -->
+    <header class="bg-primary text-white shadow-md">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center flex-wrap">
+            <div class="flex items-center space-x-2">
+                <i class="fa fa-cube text-2xl"></i>
+                <h1 class="text-[clamp(1.2rem,3vw,1.8rem)] font-bold" data-lang="title">LLM-to-3D Teaching Aids Generator</h1>
+            </div>
+            
+            <div class="flex items-center space-x-4 mt-2 sm:mt-0">
+                <!-- 语言切换按钮 -->
+                <div class="flex border border-white/30 rounded-md">
+                    <button id="langEn" class="px-3 py-1 bg-white/20 hover:bg-white/30 rounded-l-md transition-all-300" data-lang="btn_en">EN</button>
+                    <button id="langCn" class="px-3 py-1 hover:bg-white/30 rounded-r-md transition-all-300" data-lang="btn_cn">中</button>
+                </div>
+                
+                <nav>
+                    <ul class="flex space-x-6">
+                        <li><a href="#teacher" class="hover:text-orange-300 transition-all-300" data-lang="nav_teacher">Teacher Panel</a></li>
+                        <li><a href="#student" class="hover:text-orange-300 transition-all-300" data-lang="nav_student">Student Panel</a></li>
+                        <li><button id="helpBtn" class="hover:text-orange-300 transition-all-300" data-lang="nav_help"><i class="fa fa-question-circle"></i> Help</button></li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="container mx-auto px-4 py-8">
+        <!-- 教师端界面 -->
+        <section id="teacher" class="mb-16 bg-white rounded-xl shadow-lg p-6">
+            <h2 class="text-2xl font-bold text-primary mb-6 pb-2 border-b border-gray-200" data-lang="teacher_title">
+                <i class="fa fa-user-circle-o mr-2"></i>Teacher Panel
+            </h2>
+            
+            <div class="grid md:grid-cols-5 gap-6">
+                <!-- 左侧输入区 -->
+                <div class="md:col-span-2 bg-light rounded-lg p-5 card-shadow">
+                    <h3 class="text-xl font-semibold mb-4 text-dark" data-lang="teacher_input_title">Learning Objective Input</h3>
+                    
+                    <!-- 学习目标输入框 -->
+                    <div class="mb-5">
+                        <label for="learningObjective" class="block text-sm font-medium text-gray-700 mb-1" data-lang="teacher_input_label">Enter Learning Objective</label>
+                        <textarea id="learningObjective" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary resize-none" placeholder="e.g., Explain the surface of function y=x² or molecular structure of H2O" data-lang-placeholder="teacher_input_placeholder"></textarea>
+                        <div class="flex justify-between mt-1">
+                            <button id="clearInput" class="text-sm text-gray-500 hover:text-primary transition-all-300" data-lang="teacher_clear">
+                                <i class="fa fa-times-circle mr-1"></i>Clear
+                            </button>
+                            <button id="loadExample" class="text-sm text-primary hover:text-primary/80 transition-all-300" data-lang="teacher_example">
+                                <i class="fa fa-lightbulb-o mr-1"></i>Load Example
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- 约束条件 -->
+                    <div class="mb-5">
+                        <h4 class="font-medium mb-3 text-dark" data-lang="teacher_constraints">Constraints</h4>
+                        
+                        <!-- 尺寸滑块 -->
+                        <div class="mb-4">
+                            <div class="flex justify-between mb-1">
+                                <label class="text-sm text-gray-700" data-lang="teacher_size">Size: <span id="sizeValue">10</span> cm</label>
+                                <span class="text-xs text-gray-500">5-15 cm</span>
+                            </div>
+                            <input type="range" id="sizeSlider" min="5" max="15" value="10" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary">
+                        </div>
+                        
+                        <!-- 打印时间选择 -->
+                        <div class="mb-4">
+                            <label class="block text-sm text-gray-700 mb-1" data-lang="teacher_print_time">Print Time</label>
+                            <select id="printTime" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary">
+                                <option value="30" data-lang="teacher_print_30">≤ 30 minutes</option>
+                                <option value="60" selected data-lang="teacher_print_60">≤ 60 minutes</option>
+                                <option value="noLimit" data-lang="teacher_print_nolimit">No Limit</option>
+                            </select>
+                        </div>
+                        
+                        <!-- 材料选择 -->
+                        <div>
+                            <label class="block text-sm text-gray-700 mb-1" data-lang="teacher_material">Material</label>
+                            <select id="material" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary">
+                                <option value="pla" selected data-lang="teacher_material_pla">PLA (Recommended)</option>
+                                <option value="abs" data-lang="teacher_material_abs">ABS</option>
+                                <option value="flexible" data-lang="teacher_material_flex">Flexible</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- 生成按钮 -->
+                    <button id="generateBtn" class="w-full bg-primary hover:bg-primary/90 text-white font-medium py-2 px-4 rounded-md transition-all-300 flex items-center justify-center" data-lang="teacher_generate">
+                        <i class="fa fa-magic mr-2"></i>Generate 3D Models
+                    </button>
+                </div>
+                
+                <!-- 右侧输出区 -->
+                <div class="md:col-span-3">
+                    <div class="bg-light rounded-lg p-5 card-shadow mb-5">
+                        <h3 class="text-xl font-semibold mb-4 text-dark" data-lang="teacher_results">Generated Models</h3>
+                        <div id="loadingIndicator" class="hidden flex justify-center items-center py-10">
+                            <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+                            <span class="ml-3 text-gray-600" data-lang="teacher_loading">Generating models...</span>
+                        </div>
+                        
+                        <div id="modelResults" class="grid md:grid-cols-3 gap-4 hidden">
+                            <!-- 动态生成的模型卡片 -->
+                        </div>
+                        
+                        <!-- 初始状态提示 -->
+                        <div id="initialState" class="py-10 text-center">
+                            <i class="fa fa-cube text-6xl text-gray-300 mb-4"></i>
+                            <p class="text-gray-500" data-lang="teacher_initial">Enter learning objective and click Generate to see models</p>
+                        </div>
+                    </div>
+                    
+                    <!-- 打印建议 -->
+                    <div id="recommendationSection" class="bg-blue-50 rounded-lg p-4 border-l-4 border-primary hidden">
+                        <h4 class="font-medium text-primary mb-2"><i class="fa fa-info-circle mr-1"></i><span data-lang="teacher_recommendation">Printing Recommendations</span></h4>
+                        <p class="text-sm text-gray-700" id="recommendationText" data-lang="teacher_recommendation_text">For classroom use, we recommend Model 3 for its shorter print time and high printability. It maintains educational value while being more practical for quick classroom preparation.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- 学生端界面 -->
+        <section id="student" class="bg-white rounded-xl shadow-lg p-6">
+            <h2 class="text-2xl font-bold text-primary mb-6 pb-2 border-b border-gray-200" data-lang="student_title">
+                <i class="fa fa-graduation-cap mr-2"></i>Student Panel
+            </h2>
+            
+            <div class="grid md:grid-cols-3 gap-6">
+                <!-- 左侧参数调节区 -->
+                <div class="md:col-span-1 bg-light rounded-lg p-5 card-shadow">
+                    <h3 class="text-xl font-semibold mb-4 text-dark" data-lang="student_customization">Customization</h3>
+                    
+                    <!-- 选择模型下拉框 -->
+                    <div class="mb-5">
+                        <label class="block text-sm font-medium text-gray-700 mb-1" data-lang="student_select_model">Select Model</label>
+                        <select id="modelSelector" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary">
+                            <option value="" disabled selected>-- Select a generated model --</option>
+                        </select>
+                    </div>
+                    
+                    <!-- 尺寸调节 -->
+                    <div class="mb-5">
+                        <div class="flex justify-between mb-1">
+                            <label class="text-sm font-medium text-gray-700" data-lang="student_size">Size: <span id="studentSizeValue">10</span> cm</label>
+                        </div>
+                        <input type="range" id="studentSizeSlider" min="5" max="15" value="10" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary">
+                        <p class="text-xs text-gray-500 mt-1" data-lang="student_size_desc">Adjust model size (5-15 cm)</p>
+                    </div>
+                    
+                    <!-- 分段数调节 -->
+                    <div class="mb-5">
+                        <div class="flex justify-between mb-1">
+                            <label class="text-sm font-medium text-gray-700" data-lang="student_segments">Segments: <span id="segmentsValue">5</span></label>
+                        </div>
+                        <input type="range" id="segmentsSlider" min="2" max="10" value="5" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary">
+                        <p class="text-xs text-gray-500 mt-1" data-lang="student_segments_desc">More segments = more detailed structure</p>
+                    </div>
+                    
+                    <!-- 纹理密度调节 -->
+                    <div class="mb-6">
+                        <div class="flex justify-between mb-1">
+                            <label class="text-sm font-medium text-gray-700" data-lang="student_texture">Texture: <span id="textureValue">Medium</span></label>
+                        </div>
+                        <input type="range" id="textureSlider" min="1" max="3" value="2" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary">
+                        <div class="flex justify-between text-xs text-gray-500 mt-1">
+                            <span data-lang="student_low">Low</span>
+                            <span data-lang="student_medium">Medium</span>
+                            <span data-lang="student_high">High</span>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1" data-lang="student_texture_desc">Grid line density for better visualization</p>
+                    </div>
+                    
+                    <!-- 操作按钮 -->
+                    <div class="flex space-x-3">
+                        <button id="resetBtn" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-2 px-3 rounded-md transition-all-300 text-sm" data-lang="student_reset">
+                            <i class="fa fa-refresh mr-1"></i>Reset
+                        </button>
+                        <button id="saveModelBtn" class="flex-1 bg-accent hover:bg-accent/90 text-white font-medium py-2 px-3 rounded-md transition-all-300 text-sm" data-lang="student_save" disabled>
+                            <i class="fa fa-save mr-1"></i>Save
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 右侧预览区 -->
+                <div class="md:col-span-2">
+                    <div class="bg-light rounded-lg p-5 card-shadow h-full flex flex-col">
+                        <h3 class="text-xl font-semibold mb-4 text-dark" data-lang="student_preview">3D Model Preview</h3>
+                        
+                        <!-- 模型预览窗口 - 使用Three.js容器 -->
+                        <div class="flex-1 bg-gray-100 rounded-lg overflow-hidden relative mb-4 flex items-center justify-center">
+                            <div id="previewInitial" class="text-center">
+                                <i class="fa fa-cube text-6xl text-gray-300 mb-4"></i>
+                                <p class="text-gray-500" data-lang="student_preview_initial">Select a model from the dropdown to preview</p>
+                            </div>
+                            <div id="modelPreviewContainer" class="hidden w-full h-full">
+                                <!-- Three.js渲染容器 -->
+                                <div id="threejs-container" class="model-container"></div>
+                                <!-- 交互提示 -->
+                                <div class="absolute top-3 right-3 bg-black/50 text-white text-xs px-2 py-1 rounded">
+                                    <i class="fa fa-mouse-pointer mr-1"></i><span data-lang="student_drag">Drag to rotate</span>
+                                </div>
+                                <!-- 预览控制按钮 -->
+                                <div class="absolute bottom-3 left-3 flex space-x-2">
+                                    <button id="rotateBtn" class="bg-black/50 text-white p-1 rounded" title="Auto-rotate">
+                                        <i class="fa fa-refresh"></i>
+                                    </button>
+                                    <button id="zoomInBtn" class="bg-black/50 text-white p-1 rounded" title="Zoom in">
+                                        <i class="fa fa-search-plus"></i>
+                                    </button>
+                                    <button id="zoomOutBtn" class="bg-black/50 text-white p-1 rounded" title="Zoom out">
+                                        <i class="fa fa-search-minus"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 模型信息 -->
+                        <div id="modelInfo" class="grid grid-cols-3 gap-4 text-center hidden">
+                            <div class="bg-white p-3 rounded-lg shadow-sm">
+                                <p class="text-xs text-gray-500 mb-1" data-lang="student_time">Print Time</p>
+                                <p class="font-medium text-primary" id="infoTime">25 min</p>
+                            </div>
+                            <div class="bg-white p-3 rounded-lg shadow-sm">
+                                <p class="text-xs text-gray-500 mb-1" data-lang="student_material">Material</p>
+                                <p class="font-medium text-primary" id="infoMaterial">15g PLA</p>
+                            </div>
+                            <div class="bg-white p-3 rounded-lg shadow-sm">
+                                <p class="text-xs text-gray-500 mb-1" data-lang="student_complexity">Complexity</p>
+                                <p class="font-medium text-primary" id="infoComplexity" data-lang="student_medium">Medium</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 帮助模态框 -->
+    <div id="helpModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-primary" data-lang="help_title">Help & Documentation</h3>
+                <button id="closeHelpBtn" class="text-gray-500 hover:text-gray-700">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="space-y-4" data-lang="help_content">
+                <div>
+                    <h4 class="font-semibold">Teacher Panel Usage</h4>
+                    <p>1. Enter a learning objective (e.g., "Explain the surface of function y=x²")</p>
+                    <p>2. Set constraints (size, print time, material)</p>
+                    <p>3. Click "Generate 3D Models" to create teaching aids</p>
+                </div>
+                <div>
+                    <h4 class="font-semibold">Student Panel Usage</h4>
+                    <p>1. Select a generated model from the dropdown</p>
+                    <p>2. Adjust parameters (size, segments, texture)</p>
+                    <p>3. Preview the customized model in real-time</p>
+                    <p>4. Save the final model for printing</p>
+                </div>
+                <div>
+                    <h4 class="font-semibold">Tips</h4>
+                    <p>- Use simpler models for shorter print times</p>
+                    <p>- Higher segment count provides more detailed visualization</p>
+                    <p>- PLA material is recommended for classroom use</p>
+                </div>
+            </div>
+            <div class="mt-6 text-right">
+                <button id="closeHelpBtn2" class="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary/90" data-lang="help_close">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 下载模态框 -->
+    <div id="downloadModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg p-6 max-w-md w-full">
+            <div class="text-center">
+                <i class="fa fa-download text-4xl text-primary mb-4"></i>
+                <h3 class="text-xl font-bold text-primary mb-2" data-lang="download_title">Download Model</h3>
+                <p class="text-gray-600 mb-4" data-lang="download_text">Select file format for download</p>
+                
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <button class="border border-gray-300 rounded-md p-3 hover:bg-gray-50 flex flex-col items-center">
+                        <i class="fa fa-file-text-o text-2xl text-primary mb-2"></i>
+                        <span>STL File</span>
+                        <span class="text-xs text-gray-500">For 3D printing</span>
+                    </button>
+                    <button class="border border-gray-300 rounded-md p-3 hover:bg-gray-50 flex flex-col items-center">
+                        <i class="fa fa-file-image-o text-2xl text-primary mb-2"></i>
+                        <span>3D Image</span>
+                        <span class="text-xs text-gray-500">PNG format</span>
+                    </button>
+                </div>
+                
+                <button id="closeDownloadBtn" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300" data-lang="download_cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 修改模态框 -->
+    <div id="modifyModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg p-6 max-w-md w-full">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-primary" data-lang="modify_title">Modify Model</h3>
+                <button class="closeModifyBtn text-gray-500 hover:text-gray-700">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1" data-lang="modify_complexity">Complexity Level</label>
+                    <select class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                        <option>Basic</option>
+                        <option selected>Standard</option>
+                        <option>Advanced</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1" data-lang="modify_features">Additional Features</label>
+                    <div class="space-y-2">
+                        <label class="flex items-center">
+                            <input type="checkbox" class="mr-2" checked>
+                            <span>Support Structures</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="checkbox" class="mr-2">
+                            <span>Hollow Interior</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="checkbox" class="mr-2" checked>
+                            <span>Measurement Markers</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1" data-lang="modify_notes">Special Instructions</label>
+                    <textarea rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md"></textarea>
+                </div>
+            </div>
+            
+            <div class="mt-6 flex justify-end space-x-3">
+                <button class="closeModifyBtn bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300" data-lang="modify_cancel">Cancel</button>
+                <button class="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary/90" data-lang="modify_save">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 保存成功提示 -->
+    <div id="successToast" class="fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded-md shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 flex items-center">
+        <i class="fa fa-check-circle mr-2"></i>
+        <span id="successMessage">Model saved successfully!</span>
+    </div>
+
+    <!-- 页脚 -->
+    <footer class="bg-dark text-white py-6 mt-12">
+        <div class="container mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="mb-4 md:mb-0">
+                    <p class="text-sm" data-lang="footer_copyright">© 2025 LLM-to-3D Teaching Aids Project</p>
+                    <p class="text-xs text-gray-400 mt-1" data-lang="footer_course">Course: INT6065 - AI in Education</p>
+                </div>
+                <div class="flex space-x-4">
+                    <a href="#" id="docsLink" class="text-gray-400 hover:text-white transition-all-300" data-lang="footer_docs"><i class="fa fa-file-pdf-o"></i> Documentation</a>
+                    <a href="#" id="supportLink" class="text-gray-400 hover:text-white transition-all-300" data-lang="footer_support"><i class="fa fa-question-circle"></i> Support</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // 语言包定义
+        const translations = {
+            en: {
+                title: "LLM-to-3D Teaching Aids Generator",
+                btn_en: "EN",
+                btn_cn: "中",
+                nav_teacher: "Teacher Panel",
+                nav_student: "Student Panel",
+                nav_help: "<i class='fa fa-question-circle'></i> Help",
+                
+                teacher_title: "<i class='fa fa-user-circle-o mr-2'></i>Teacher Panel",
+                teacher_input_title: "Learning Objective Input",
+                teacher_input_label: "Enter Learning Objective",
+                teacher_input_placeholder: "e.g., Explain the surface of function y=x² or molecular structure of H2O",
+                teacher_clear: "<i class='fa fa-times-circle mr-1'></i>Clear",
+                teacher_example: "<i class='fa fa-lightbulb-o mr-1'></i>Load Example",
+                teacher_constraints: "Constraints",
+                teacher_size: "Size: ",
+                teacher_print_time: "Print Time",
+                teacher_print_30: "≤ 30 minutes",
+                teacher_print_60: "≤ 60 minutes",
+                teacher_print_nolimit: "No Limit",
+                teacher_material: "Material",
+                teacher_material_pla: "PLA (Recommended)",
+                teacher_material_abs: "ABS",
+                teacher_material_flex: "Flexible",
+                teacher_generate: "<i class='fa fa-magic mr-2'></i>Generate 3D Models",
+                teacher_results: "Generated Models",
+                teacher_loading: "Generating models...",
+                teacher_initial: "Enter learning objective and click Generate to see models",
+                teacher_model1: "Model 1",
+                teacher_model2: "Model 2",
+                teacher_model3: "Model 3",
+                teacher_high_print: "High Printability",
+                teacher_need_support: "Need Supports",
+                teacher_time: "Print Time:",
+                teacher_material_short: "Material:",
+                teacher_download: "<i class='fa fa-download mr-1'></i>STL",
+                teacher_modify: "<i class='fa fa-sliders mr-1'></i>Modify",
+                teacher_save: "<i class='fa fa-heart-o mr-1'></i>Save",
+                teacher_recommendation: "Printing Recommendations",
+                teacher_recommendation_text: "For classroom use, we recommend Model 3 for its shorter print time and high printability. It maintains educational value while being more practical for quick classroom preparation.",
+                
+                student_title: "<i class='fa fa-graduation-cap mr-2'></i>Student Panel",
+                student_select_model: "Select Model",
+                student_customization: "Customization",
+                student_size: "Size: ",
+                student_size_desc: "Adjust model size (5-15 cm)",
+                student_segments: "Segments: ",
+                student_segments_desc: "More segments = more detailed structure",
+                student_texture: "Texture: ",
+                student_low: "Low",
+                student_medium: "Medium",
+                student_high: "High",
+                student_texture_desc: "Grid line density for better visualization",
+                student_reset: "<i class='fa fa-refresh mr-1'></i>Reset",
+                student_save: "<i class='fa fa-save mr-1'></i>Save",
+                student_preview: "3D Model Preview",
+                student_preview_initial: "Select a model from the dropdown to preview",
+                student_drag: "Drag to rotate",
+                student_time: "Print Time",
+                student_material: "Material",
+                student_complexity: "Complexity",
+                
+                help_title: "Help & Documentation",
+                help_content: `
+                    <div>
+                        <h4 class="font-semibold">Teacher Panel Usage</h4>
+                        <p>1. Enter a learning objective (e.g., "Explain the surface of function y=x²")</p>
+                        <p>2. Set constraints (size, print time, material)</p>
+                        <p>3. Click "Generate 3D Models" to create teaching aids</p>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold">Student Panel Usage</h4>
+                        <p>1. Select a generated model from the dropdown</p>
+                        <p>2. Adjust parameters (size, segments, texture)</p>
+                        <p>3. Preview the customized model in real-time</p>
+                        <p>4. Save the final model for printing</p>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold">Tips</h4>
+                        <p>- Use simpler models for shorter print times</p>
+                        <p>- Higher segment count provides more detailed visualization</p>
+                        <p>- PLA material is recommended for classroom use</p>
+                    </div>
+                `,
+                help_close: "Close",
+                
+                download_title: "Download Model",
+                download_text: "Select file format for download",
+                download_cancel: "Cancel",
+                
+                modify_title: "Modify Model",
+                modify_complexity: "Complexity Level",
+                modify_features: "Additional Features",
+                modify_notes: "Special Instructions",
+                modify_cancel: "Cancel",
+                modify_save: "Save Changes",
+                
+                footer_copyright: "© 2025 LLM-to-3D Teaching Aids Project",
+                footer_course: "Course: INT6065 - AI in Education",
+                footer_docs: "<i class='fa fa-file-pdf-o'></i> Documentation",
+                footer_support: "<i class='fa fa-question-circle'></i> Support"
+            },
+            cn: {
+                title: "LLM转3D：文本驱动教具生成系统",
+                btn_en: "英",
+                btn_cn: "中",
+                nav_teacher: "教师端",
+                nav_student: "学生端",
+                nav_help: "<i class='fa fa-question-circle'></i> 帮助",
+                
+                teacher_title: "<i class='fa fa-user-circle-o mr-2'></i>教师端",
+                teacher_input_title: "学习目标输入",
+                teacher_input_label: "输入学习目标",
+                teacher_input_placeholder: "例如：解释函数y=x²的曲面或H2O分子结构",
+                teacher_clear: "<i class='fa fa-times-circle mr-1'></i>清空",
+                teacher_example: "<i class='fa fa-lightbulb-o mr-1'></i>加载示例",
+                teacher_constraints: "约束条件",
+                teacher_size: "尺寸：",
+                teacher_print_time: "打印时间",
+                teacher_print_30: "≤ 30分钟",
+                teacher_print_60: "≤ 60分钟",
+                teacher_print_nolimit: "无限制",
+                teacher_material: "材料",
+                teacher_material_pla: "PLA（推荐）",
+                teacher_material_abs: "ABS",
+                teacher_material_flex: "柔性材料",
+                teacher_generate: "<i class='fa fa-magic mr-2'></i>生成3D模型",
+                teacher_results: "生成的模型",
+                teacher_loading: "正在生成模型...",
+                teacher_initial: "输入学习目标并点击生成按钮查看模型",
+                teacher_model1: "模型1",
+                teacher_model2: "模型2",
+                teacher_model3: "模型3",
+                teacher_high_print: "高可打印性",
+                teacher_need_support: "需要支撑结构",
+                teacher_time: "打印时间：",
+                teacher_material_short: "材料：",
+                teacher_download: "<i class='fa fa-download mr-1'></i>下载",
+                teacher_modify: "<i class='fa fa-sliders mr-1'></i>修改",
+                teacher_save: "<i class='fa fa-heart-o mr-1'></i>保存",
+                teacher_recommendation: "打印建议",
+                teacher_recommendation_text: "对于课堂使用，我们推荐模型3，因为它打印时间更短且可打印性高。在保持教育价值的同时，更适合快速的课堂准备。",
+                
+                student_title: "<i class='fa fa-graduation-cap mr-2'></i>学生端",
+                student_select_model: "选择模型",
+                student_customization: "个性化设置",
+                student_size: "尺寸：",
+                student_size_desc: "调整模型尺寸（5-15厘米）",
+                student_segments: "分段数：",
+                student_segments_desc: "分段数越多，结构越详细",
+                student_texture: "纹理：",
+                student_low: "稀疏",
+                student_medium: "中等",
+                student_high: "密集",
+                student_texture_desc: "网格线密度，提升可视化效果",
+                student_reset: "<i class='fa fa-refresh mr-1'></i>重置",
+                student_save: "<i class='fa fa-save mr-1'></i>保存",
+                student_preview: "3D模型预览",
+                student_preview_initial: "从下拉菜单选择模型进行预览",
+                student_drag: "拖动旋转",
+                student_time: "打印时间",
+                student_material: "材料",
+                student_complexity: "复杂度",
+                
+                help_title: "帮助与文档",
+                help_content: `
+                    <div>
+                        <h4 class="font-semibold">教师端使用方法</h4>
+                        <p>1. 输入学习目标（例如："解释函数y=x²的曲面"）</p>
+                        <p>2. 设置约束条件（尺寸、打印时间、材料）</p>
+                        <p>3. 点击"生成3D模型"创建教具</p>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold">学生端使用方法</h4>
+                        <p>1. 从下拉菜单选择生成的模型</p>
+                        <p>2. 调整参数（尺寸、分段数、纹理）</p>
+                        <p>3. 实时预览定制化模型</p>
+                        <p>4. 保存最终模型用于打印</p>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold">提示</h4>
+                        <p>- 使用简单模型可缩短打印时间</p>
+                        <p>- 更高的分段数提供更详细的可视化效果</p>
+                        <p>- PLA材料推荐用于课堂使用</p>
+                    </div>
+                `,
+                help_close: "关闭",
+                
+                download_title: "下载模型",
+                download_text: "选择下载的文件格式",
+                download_cancel: "取消",
+                
+                modify_title: "修改模型",
+                modify_complexity: "复杂度级别",
+                modify_features: "附加功能",
+                modify_notes: "特殊说明",
+                modify_cancel: "取消",
+                modify_save: "保存更改",
+                
+                footer_copyright: "© 2025 LLM转3D教具项目",
+                footer_course: "课程：INT6065 - 人工智能教育应用",
+                footer_docs: "<i class='fa fa-file-pdf-o'></i> 文档",
+                footer_support: "<i class='fa fa-question-circle'></i> 支持"
+            }
+        };
+        
+        // 模型数据 - 更新为使用真实的3D模型URL
+        const modelData = {
+            functionSurface: {
+                name: { en: "Function Surface (y=x²)", cn: "函数曲面 (y=x²)" },
+                images: [
+                    "https://picsum.photos/id/180/300/200",
+                    "https://picsum.photos/id/119/300/200",
+                    "https://picsum.photos/id/201/300/200"
+                ],
+                // 使用3D模型URL替代图片
+                modelUrls: [
+                    "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Triangle/glTF/Triangle.gltf",
+                    "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Box/glTF/Box.gltf",
+                    "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Sphere/glTF/Sphere.gltf"
+                ],
+                variants: [
+                    { printTime: "25 min", material: "15g PLA", printability: "high", complexity: "medium" },
+                    { printTime: "38 min", material: "22g PLA", printability: "support", complexity: "high" },
+                    { printTime: "20 min", material: "12g PLA", printability: "high", complexity: "low" }
+                ]
+            },
+            molecule: {
+                name: { en: "H2O Molecule Structure", cn: "H2O分子结构" },
+                images: [
+                    "./models/molecule/1.png",
+                    "./models/molecule/2.png",
+                    "./models/molecule/3.png"
+                ],
+                // 水分子模型URL
+                modelUrls: [
+                    "./models/molecule/1.gltf",
+                    "./models/molecule/2.gltf",
+                    "./models/molecule/3.gltf"
+                ],
+                variants: [
+                    { printTime: "18 min", material: "10g PLA", printability: "high", complexity: "low" },
+                    { printTime: "28 min", material: "18g PLA", printability: "support", complexity: "medium" },
+                    { printTime: "35 min", material: "25g PLA", printability: "support", complexity: "high" }
+                ]
+            },
+            planet: {
+                name: { en: "Planet Set", cn: "星球集合" },
+                images: [
+                    "./models/planet/1.jpg",
+                    "./models/planet/2.jpg",
+                    "./models/planet/3.jpg"
+                ],
+                modelUrls: [
+                    "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Cube/glTF/Cube.gltf",
+                    "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Cylinder/glTF/Cylinder.gltf",
+                    "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Cone/glTF/Cone.gltf"
+                ],
+                variants: [
+                    { printTime: "30 min", material: "20g PLA", printability: "high", complexity: "medium" },
+                    { printTime: "45 min", material: "30g PLA", printability: "high", complexity: "high" },
+                    { printTime: "22 min", material: "14g PLA", printability: "high", complexity: "low" }
+                ]
+            },
+            geometry: {
+                name: { en: "Geometric Shapes Set", cn: "几何形状集合" },
+                images: [
+                    "https://picsum.photos/id/102/300/200",
+                    "https://picsum.photos/id/103/300/200",
+                    "https://picsum.photos/id/104/300/200"
+                ],
+                modelUrls: [
+                    "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Cube/glTF/Cube.gltf",
+                    "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Cylinder/glTF/Cylinder.gltf",
+                    "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Cone/glTF/Cone.gltf"
+                ],
+                variants: [
+                    { printTime: "30 min", material: "20g PLA", printability: "high", complexity: "medium" },
+                    { printTime: "45 min", material: "30g PLA", printability: "high", complexity: "high" },
+                    { printTime: "22 min", material: "14g PLA", printability: "high", complexity: "low" }
+                ]
+            }
+        };
+        
+        // 当前语言
+        let currentLang = 'en';
+        let currentModelType = 'functionSurface';
+        let isRotating = false;
+        let zoomLevel = 1;
+        
+        // Three.js相关变量
+        let scene, camera, renderer, controls, currentModel;
+        let autoRotateInterval;
+        
+        // 初始化Three.js场景
+        function initThreeJS() {
+            // 创建场景
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf1f5f9);
+            
+            // 创建相机
+            camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
+            camera.position.z = 5;
+            
+            // 创建渲染器
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            const container = document.getElementById('threejs-container');
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+            
+            // 添加轨道控制器
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            
+            // 添加光源
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 5, 5);
+            scene.add(directionalLight);
+            
+            // 动画循环
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+            
+            // 响应窗口大小变化
+            window.addEventListener('resize', () => {
+                if (container) {
+                    camera.aspect = container.clientWidth / container.clientHeight;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(container.clientWidth, container.clientHeight);
+                }
+            });
+        }
+        
+        // 加载3D模型
+        function loadModel(modelUrl) {
+            // 清除现有模型
+            if (currentModel) {
+                scene.remove(currentModel);
+                currentModel = null;
+            }
+            
+            // 创建GLTF加载器
+            const loader = new THREE.GLTFLoader();
+            
+            loader.load(
+                modelUrl,
+                function (gltf) {
+                    currentModel = gltf.scene;
+                    scene.add(currentModel);
+                    
+                    // 自动调整模型大小和位置
+                    const box = new THREE.Box3().setFromObject(currentModel);
+                    const center = box.getCenter(new THREE.Vector3());
+                    const size = box.getSize(new THREE.Vector3());
+                    
+                    // 将模型居中
+                    currentModel.position.sub(center);
+                    
+                    // 缩放模型以适应视图
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const scale = 3 / maxDim;
+                    currentModel.scale.set(scale, scale, scale);
+                    
+                },
+                function (xhr) {
+                    console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+                },
+                function (error) {
+                    console.error('An error happened', error);
+                    // 如果加载失败，创建一个简单的几何体作为替代
+                    createFallbackGeometry();
+                }
+            );
+        }
+        
+        // 创建备用几何体
+        function createFallbackGeometry() {
+            // 根据模型类型创建不同的几何体
+            if (currentModelType === 'molecule') {
+                // 创建水分子结构
+                createWaterMolecule();
+            } else if (currentModelType === 'functionSurface') {
+                // 创建抛物面
+                createParaboloid();
+            } else {
+                // 创建几何形状组合
+                createGeometrySet();
+            }
+        }
+        
+        // 创建水分子结构
+        function createWaterMolecule() {
+            console.log(6666);
+            
+            const group = new THREE.Group();
+            
+            // 氧原子（较大的红色球体）
+            const oxygenGeometry = new THREE.SphereGeometry(1, 32, 32);
+            const oxygenMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000 });
+            const oxygen = new THREE.Mesh(oxygenGeometry, oxygenMaterial);
+            group.add(oxygen);
+            
+            // 氢原子（较小的白色球体）
+            const hydrogenGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+            const hydrogenMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff });
+            
+            const hydrogen1 = new THREE.Mesh(hydrogenGeometry, hydrogenMaterial);
+            hydrogen1.position.set(1.2, 0.8, 0);
+            group.add(hydrogen1);
+            
+            const hydrogen2 = new THREE.Mesh(hydrogenGeometry, hydrogenMaterial);
+            hydrogen2.position.set(1.2, -0.8, 0);
+            group.add(hydrogen2);
+            
+            // 添加化学键
+            const bondGeometry = new THREE.CylinderGeometry(0.1, 0.1, 1.5, 8);
+            const bondMaterial = new THREE.MeshPhongMaterial({ color: 0xcccccc });
+            
+            const bond1 = new THREE.Mesh(bondGeometry, bondMaterial);
+            bond1.position.set(0.6, 0.4, 0);
+            bond1.rotation.z = -Math.PI / 6;
+            group.add(bond1);
+            
+            const bond2 = new THREE.Mesh(bondGeometry, bondMaterial);
+            bond2.position.set(0.6, -0.4, 0);
+            bond2.rotation.z = Math.PI / 6;
+            group.add(bond2);
+            
+            currentModel = group;
+            scene.add(currentModel);
+        }
+        
+        // 创建抛物面
+        function createParaboloid() {
+            const geometry = new THREE.ParametricGeometry(function(u, v, target) {
+                u = u * 2 * Math.PI;
+                v = v * 2 - 1;
+                
+                const x = v * Math.cos(u);
+                const y = v * Math.sin(u);
+                const z = x * x + y * y;
+                
+                target.set(x, y, z);
+            }, 20, 20);
+            
+            const material = new THREE.MeshPhongMaterial({ 
+                color: 0x0077ff,
+                wireframe: true
+            });
+            
+            const paraboloid = new THREE.Mesh(geometry, material);
+            paraboloid.scale.set(2, 2, 0.5);
+            
+            currentModel = paraboloid;
+            scene.add(currentModel);
+        }
+        
+        // 创建几何形状集合
+        function createGeometrySet() {
+            const group = new THREE.Group();
+            
+            // 立方体
+            const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+            const cubeMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000 });
+            const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+            cube.position.set(-2, 0, 0);
+            group.add(cube);
+            
+            // 球体
+            const sphereGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+            const sphereMaterial = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
+            const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            sphere.position.set(0, 0, 0);
+            group.add(sphere);
+            
+            // 圆柱体
+            const cylinderGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 16);
+            const cylinderMaterial = new THREE.MeshPhongMaterial({ color: 0x0000ff });
+            const cylinder = new THREE.Mesh(cylinderGeometry, cylinderMaterial);
+            cylinder.position.set(2, 0, 0);
+            group.add(cylinder);
+            
+            currentModel = group;
+            scene.add(currentModel);
+        }
+        
+        // 开始自动旋转
+        function startAutoRotate() {
+            if (autoRotateInterval) clearInterval(autoRotateInterval);
+            
+            autoRotateInterval = setInterval(() => {
+                if (currentModel) {
+                    currentModel.rotation.y += 0.01;
+                }
+            }, 16);
+        }
+        
+        // 停止自动旋转
+        function stopAutoRotate() {
+            if (autoRotateInterval) {
+                clearInterval(autoRotateInterval);
+                autoRotateInterval = null;
+            }
+        }
+        
+        // 更新语言函数
+        function updateLanguage(lang) {
+            currentLang = lang;
+            
+            // 更新所有文本元素
+            document.querySelectorAll('[data-lang]').forEach(el => {
+                const key = el.getAttribute('data-lang');
+                if (translations[lang][key]) {
+                    if (key === 'help_content') {
+                        el.innerHTML = translations[lang][key];
+                    } else {
+                        el.innerHTML = translations[lang][key];
+                    }
+                }
+            });
+            
+            // 更新placeholder属性
+            document.querySelectorAll('[data-lang-placeholder]').forEach(el => {
+                const key = el.getAttribute('data-lang-placeholder');
+                if (translations[lang][key]) {
+                    el.placeholder = translations[lang][key];
+                }
+            });
+            
+            // 更新选项文本
+            document.querySelectorAll('option[data-lang]').forEach(el => {
+                const key = el.getAttribute('data-lang');
+                if (translations[lang][key]) {
+                    el.textContent = translations[lang][key];
+                }
+            });
+            
+            // 更新页面标题
+            document.title = translations[lang].title;
+            
+            // 更新语言按钮样式
+            document.getElementById('langEn').classList.toggle('bg-white/20', lang === 'en');
+            document.getElementById('langCn').classList.toggle('bg-white/20', lang === 'cn');
+            
+            // 更新示例文本
+            if (lang === 'cn') {
+                document.getElementById('loadExample').dataset.exampleText = '解释函数y=x²的曲面及其性质';
+            } else {
+                document.getElementById('loadExample').dataset.exampleText = 'Explain the surface of function y=x² and its properties';
+            }
+            
+            // 更新推荐文本
+            updateRecommendationText();
+            
+            // 更新模型选择器
+            updateModelSelector();
+            
+            // 更新成功消息
+            document.getElementById('successMessage').textContent = lang === 'cn' ? '模型保存成功！' : 'Model saved successfully!';
+        }
+        
+        // 更新推荐文本
+        function updateRecommendationText() {
+            const learningObjective = document.getElementById('learningObjective').value.toLowerCase();
+            let recommendationText = translations[currentLang].teacher_recommendation_text;
+            
+            if (learningObjective.includes('molecule') || learningObjective.includes('分子')) {
+                recommendationText = currentLang === 'en' 
+                    ? "For molecular models, we recommend Model 1 for its simplicity and educational clarity. It clearly shows the atomic structure without excessive complexity."
+                    : "对于分子模型，我们推荐模型1，因为它简单且教育清晰度高。它清晰地展示了原子结构，没有过多的复杂性。";
+            } else if (learningObjective.includes('geometry') || learningObjective.includes('几何')) {
+                recommendationText = currentLang === 'en' 
+                    ? "For geometric shapes, Model 3 offers the best balance between detail and print time, making it ideal for classroom demonstrations."
+                    : "对于几何形状，模型3在细节和打印时间之间提供了最佳平衡，非常适合课堂演示。";
+            }
+            
+            document.getElementById('recommendationText').textContent = recommendationText;
+        }
+        
+        // 生成模型卡片
+        function generateModelCards(modelType) {
+            currentModelType = modelType;
+            const modelResults = document.getElementById('modelResults');
+            const modelSelector = document.getElementById('modelSelector');
+            
+            // 清空现有内容
+            modelResults.innerHTML = '';
+            modelSelector.innerHTML = '<option value="" disabled selected>-- ' + (currentLang === 'en' ? 'Select a generated model' : '选择生成的模型') + ' --</option>';
+            
+            const model = modelData[modelType];
+            
+            // 添加模型选项到选择器
+            model.variants.forEach((variant, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = `${translations[currentLang][`teacher_model${index+1}`]} - ${variant.printTime}`;
+                modelSelector.appendChild(option);
+            });
+            
+            // 创建模型卡片
+            model.variants.forEach((variant, index) => {
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all-300';
+                card.innerHTML = `
+                    <div class="bg-gray-100 h-40 flex items-center justify-center">
+                        <img src="${model.images[index]}" alt="${model.name[currentLang]} ${index+1}" class="h-full object-cover">
+                    </div>
+                    <div class="p-3">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-sm font-medium">${translations[currentLang][`teacher_model${index+1}`]}</span>
+                            <span class="text-xs ${variant.printability === 'high' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'} px-2 py-0.5 rounded-full">
+                                ${translations[currentLang][variant.printability === 'high' ? 'teacher_high_print' : 'teacher_need_support']}
+                            </span>
+                        </div>
+                        <div class="text-sm text-gray-600 space-y-1">
+                            <p><i class="fa fa-clock-o mr-1"></i><span>${translations[currentLang].teacher_time}</span> ${variant.printTime}</p>
+                            <p><i class="fa fa-balance-scale mr-1"></i><span>${translations[currentLang].teacher_material_short}</span> ${variant.material}</p>
+                        </div>
+                        <div class="flex justify-between mt-3">
+                            <button class="text-xs text-primary hover:text-primary/80 downloadBtn" data-model-index="${index}">
+                                ${translations[currentLang].teacher_download}
+                            </button>
+                            <button class="text-xs text-gray-600 hover:text-gray-800 modifyBtn" data-model-index="${index}">
+                                ${translations[currentLang].teacher_modify}
+                            </button>
+                            <button class="text-xs text-gray-600 hover:text-gray-800 saveBtn" data-model-index="${index}">
+                                ${translations[currentLang].teacher_save}
+                            </button>
+                        </div>
+                    </div>
+                `;
+                modelResults.appendChild(card);
+            });
+            
+            // 为新创建的按钮添加事件监听
+            document.querySelectorAll('.downloadBtn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    showModal('downloadModal');
+                });
+            });
+            
+            document.querySelectorAll('.modifyBtn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    showModal('modifyModal');
+                });
+            });
+            
+            document.querySelectorAll('.saveBtn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    showSuccessToast(currentLang === 'cn' ? '模型已保存！' : 'Model saved!');
+                });
+            });
+            
+            // 启用保存按钮
+            document.getElementById('saveModelBtn').disabled = false;
+        }
+        
+        // 更新模型选择器
+        function updateModelSelector() {
+            const modelSelector = document.getElementById('modelSelector');
+            const options = modelSelector.querySelectorAll('option');
+            
+            options.forEach((option, index) => {
+                if (index > 0) {
+                    const modelIndex = option.value;
+                    option.textContent = `${translations[currentLang][`teacher_model${parseInt(modelIndex)+1}`]} - ${modelData[currentModelType].variants[modelIndex].printTime}`;
+                } else {
+                    option.textContent = '-- ' + (currentLang === 'en' ? 'Select a generated model' : '选择生成的模型') + ' --';
+                }
+            });
+        }
+        
+        // 显示模型预览
+        function showModelPreview(modelIndex) {
+            const model = modelData[currentModelType];
+            const variant = model.variants[modelIndex];
+            
+            // 显示预览容器，隐藏初始提示
+            document.getElementById('previewInitial').classList.add('hidden');
+            document.getElementById('modelPreviewContainer').classList.remove('hidden');
+            document.getElementById('modelInfo').classList.remove('hidden');
+            
+            // 初始化Three.js（如果尚未初始化）
+            if (!scene) {
+                initThreeJS();
+            }
+            
+            // 加载选中的3D模型
+            if (model.modelUrls && model.modelUrls[modelIndex]) {
+                loadModel(model.modelUrls[modelIndex]);
+            } else {
+                // 如果没有模型URL，创建备用几何体
+                createFallbackGeometry();
+            }
+            
+            // 停止自动旋转
+            stopAutoRotate();
+            isRotating = false;
+            
+            // 更新模型信息
+            document.getElementById('infoTime').textContent = variant.printTime;
+            document.getElementById('infoMaterial').textContent = variant.material;
+            
+            const complexityText = {
+                en: { low: 'Low', medium: 'Medium', high: 'High' },
+                cn: { low: '低', medium: '中等', high: '高' }
+            };
+            document.getElementById('infoComplexity').textContent = complexityText[currentLang][variant.complexity];
+        }
+        
+        // 显示模态框
+        function showModal(modalId) {
+            document.getElementById(modalId).classList.remove('hidden');
+            // 防止背景滚动
+            document.body.style.overflow = 'hidden';
+        }
+        
+        // 隐藏模态框
+        function hideModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+            // 恢复背景滚动
+            document.body.style.overflow = '';
+        }
+        
+        // 显示成功提示
+        function showSuccessToast(message) {
+            const toast = document.getElementById('successToast');
+            const messageEl = document.getElementById('successMessage');
+            
+            messageEl.textContent = message;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+        
+        // 绑定语言切换事件
+        document.getElementById('langEn').addEventListener('click', () => updateLanguage('en'));
+        document.getElementById('langCn').addEventListener('click', () => updateLanguage('cn'));
+        
+        // 初始化示例文本数据属性
+        document.getElementById('loadExample').dataset.exampleText = 'Explain the surface of function y=x² and its properties';
+        
+        // 教师端尺寸滑块交互
+        const sizeSlider = document.getElementById('sizeSlider');
+        const sizeValue = document.getElementById('sizeValue');
+        
+        sizeSlider.addEventListener('input', () => {
+            sizeValue.textContent = sizeSlider.value;
+        });
+        
+        // 学生端尺寸滑块交互
+        const studentSizeSlider = document.getElementById('studentSizeSlider');
+        const studentSizeValue = document.getElementById('studentSizeValue');
+        
+        studentSizeSlider.addEventListener('input', () => {
+            studentSizeValue.textContent = studentSizeSlider.value;
+            
+            // 更新3D模型大小
+            if (currentModel) {
+                const scale = studentSizeSlider.value / 10;
+                currentModel.scale.set(scale, scale, scale);
+            }
+        });
+        
+        // 分段数滑块交互
+        const segmentsSlider = document.getElementById('segmentsSlider');
+        const segmentsValue = document.getElementById('segmentsValue');
+        
+        segmentsSlider.addEventListener('input', () => {
+            segmentsValue.textContent = segmentsSlider.value;
+        });
+        
+        // 纹理密度滑块交互
+        const textureSlider = document.getElementById('textureSlider');
+        const textureValue = document.getElementById('textureValue');
+        const textureLabels = {
+            en: ['Low', 'Medium', 'High'],
+            cn: ['稀疏', '中等', '密集']
+        };
+        
+        function updateTextureLabel() {
+            const value = parseInt(textureSlider.value);
+            textureValue.textContent = textureLabels[currentLang][value - 1];
+            
+            // 如果已有选中的模型，更新材质
+            if (currentModel) {
+                const textureDensity = value;
+                // 这里可以根据纹理密度更新材质
+                currentModel.traverse(function(child) {
+                    if (child.material) {
+                        if (textureDensity === 1) {
+                            child.material.wireframe = true;
+                        } else if (textureDensity === 2) {
+                            child.material.wireframe = false;
+                            child.material.opacity = 0.8;
+                            child.material.transparent = true;
+                        } else {
+                            child.material.wireframe = false;
+                            child.material.opacity = 1;
+                            child.material.transparent = false;
+                        }
+                    }
+                });
+            }
+        }
+        
+        textureSlider.addEventListener('input', updateTextureLabel);
+        
+        // 清除输入
+        document.getElementById('clearInput').addEventListener('click', () => {
+            document.getElementById('learningObjective').value = '';
+        });
+        
+        // 加载示例
+        document.getElementById('loadExample').addEventListener('click', function() {
+            document.getElementById('learningObjective').value = this.dataset.exampleText;
+        });
+        
+        // 生成按钮交互
+        const generateBtn = document.getElementById('generateBtn');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const modelResults = document.getElementById('modelResults');
+        const initialState = document.getElementById('initialState');
+        const recommendationSection = document.getElementById('recommendationSection');
+        
+        generateBtn.addEventListener('click', () => {
+            const learningObjective = document.getElementById('learningObjective').value.toLowerCase();
+            
+            // 确定生成的模型类型
+            let modelType = 'functionSurface';
+            if (learningObjective.includes('molecule') || learningObjective.includes('分子') || learningObjective.toLowerCase().includes('h2o')) {
+                modelType = 'molecule';
+            } else if (learningObjective.includes('geometry') || learningObjective.includes('几何')) {
+                modelType = 'geometry';
+            } else if (learningObjective.includes('planet') || learningObjective.includes('星球')) {
+                modelType = 'planet';
+            }
+            
+            // 显示加载状态
+            loadingIndicator.classList.remove('hidden');
+            modelResults.classList.add('hidden');
+            initialState.classList.add('hidden');
+            recommendationSection.classList.add('hidden');
+            
+            // 模拟生成延迟
+            setTimeout(() => {
+                loadingIndicator.classList.add('hidden');
+                modelResults.classList.remove('hidden');
+                recommendationSection.classList.remove('hidden');
+                
+                // 生成模型卡片
+                generateModelCards(modelType);
+                
+                // 更新推荐文本
+                updateRecommendationText();
+                
+                // 平滑滚动到结果区域
+                document.getElementById('modelResults').scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'nearest'
+                });
+            }, 2000);
+        });
+        
+        // 模型选择器变化
+        document.getElementById('modelSelector').addEventListener('change', function() {
+            if (this.value !== "") {
+                showModelPreview(this.value);
+            } else {
+                // 重置预览
+                document.getElementById('previewInitial').classList.remove('hidden');
+                document.getElementById('modelPreviewContainer').classList.add('hidden');
+                document.getElementById('modelInfo').classList.add('hidden');
+                
+                // 清除3D模型
+                if (currentModel) {
+                    scene.remove(currentModel);
+                    currentModel = null;
+                }
+                
+                // 停止自动旋转
+                stopAutoRotate();
+                isRotating = false;
+            }
+        });
+        
+        // 重置按钮
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            studentSizeSlider.value = 10;
+            studentSizeValue.textContent = 10;
+            
+            segmentsSlider.value = 5;
+            segmentsValue.textContent = 5;
+            
+            textureSlider.value = 2;
+            updateTextureLabel();
+            
+            // 重置3D模型大小
+            if (currentModel) {
+                currentModel.scale.set(1, 1, 1);
+            }
+            
+            // 停止自动旋转
+            stopAutoRotate();
+            isRotating = false;
+        });
+        
+        // 保存按钮
+        document.getElementById('saveModelBtn').addEventListener('click', () => {
+            const message = currentLang === 'cn' ? '模型保存成功！现在你可以下载STL文件。' : 'Model saved successfully! You can now download the STL file.';
+            showSuccessToast(message);
+        });
+        
+        // 页面滚动平滑效果
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+        
+        // 帮助按钮
+        document.getElementById('helpBtn').addEventListener('click', () => showModal('helpModal'));
+        document.getElementById('docsLink').addEventListener('click', (e) => {
+            e.preventDefault();
+            showModal('helpModal');
+        });
+        document.getElementById('supportLink').addEventListener('click', (e) => {
+            e.preventDefault();
+            showModal('helpModal');
+        });
+        
+        // 关闭帮助模态框
+        document.getElementById('closeHelpBtn').addEventListener('click', () => hideModal('helpModal'));
+        document.getElementById('closeHelpBtn2').addEventListener('click', () => hideModal('helpModal'));
+        
+        // 关闭下载模态框
+        document.getElementById('closeDownloadBtn').addEventListener('click', () => hideModal('downloadModal'));
+        
+        // 关闭修改模态框
+        document.querySelectorAll('.closeModifyBtn').forEach(btn => {
+            btn.addEventListener('click', () => hideModal('modifyModal'));
+        });
+        
+        // 点击模态框外部关闭
+        document.querySelectorAll('.fixed').forEach(modal => {
+            modal.addEventListener('click', function(e) {
+                if (e.target === this) {
+                    hideModal(this.id);
+                }
+            });
+        });
+        
+        // 预览控制按钮
+        document.getElementById('rotateBtn').addEventListener('click', () => {
+            if (isRotating) {
+                stopAutoRotate();
+                isRotating = false;
+            } else {
+                startAutoRotate();
+                isRotating = true;
+            }
+        });
+        
+        document.getElementById('zoomInBtn').addEventListener('click', () => {
+            if (camera) {
+                camera.position.z = Math.max(1, camera.position.z - 0.5);
+            }
+        });
+        
+        document.getElementById('zoomOutBtn').addEventListener('click', () => {
+            if (camera) {
+                camera.position.z = Math.min(10, camera.position.z + 0.5);
+            }
+        });
+        
+        // 初始化语言
+        updateLanguage('en');
+    </script>

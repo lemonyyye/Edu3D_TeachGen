@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>电子云模型-水分子（支持glTF导出）</title>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/exporters/GLTFExporter.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
+        #container { width: 100vw; height: 100vh; }
+        #controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 10; background: rgba(40,40,40,0.8); padding: 10px; border-radius: 20px; }
+        button { margin: 0 5px; padding: 8px 15px; border: none; border-radius: 15px; cursor: pointer; background: #444; color: #eee; transition: all 0.2s; }
+        button:hover { background: #666; color: #fff; }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <div id="controls">
+        <button id="reset">重置视角</button>
+        <button id="rotate">暂停旋转</button>
+        <button id="zoomIn">放大</button>
+        <button id="zoomOut">缩小</button>
+        <button id="export">导出glTF</button>
+    </div>
+
+    <script>
+        // 初始化场景
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.getElementById('container').appendChild(renderer.domElement);
+
+        // 控制器
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        camera.position.set(0, 3, 8);
+
+        // 光源
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(5, 10, 7.5);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+
+        // 电子云模型参数
+        const atomParams = {
+            O: { 
+                radius: 0.8, 
+                color: 0xff4444, 
+                cloudRadius: 2.0, 
+                cloudColor: 0xff8888,
+                name: 'Oxygen' 
+            },
+            H: { 
+                radius: 0.5, 
+                color: 0xffffff, 
+                cloudRadius: 1.2, 
+                cloudColor: 0xeeeeee,
+                name: 'Hydrogen' 
+            }
+        };
+        const hDistance = 2.0;
+        const bondAngle = Math.PI / 3.5;
+
+        // 创建原子（包含电子云）
+        function createAtom(type) {
+            const { radius, color, cloudRadius, cloudColor, name } = atomParams[type];
+            
+            // 原子核心
+            const coreGeo = new THREE.SphereGeometry(radius, 32, 32);
+            const coreMat = new THREE.MeshPhongMaterial({ 
+                color: color, 
+                shininess: 100,
+                specular: 0x333333
+            });
+            const core = new THREE.Mesh(coreGeo, coreMat);
+            core.name = name;
+            core.castShadow = true;
+            core.receiveShadow = true;
+
+            // 电子云
+            const cloudGeo = new THREE.SphereGeometry(cloudRadius, 32, 32);
+            const cloudMat = new THREE.MeshPhongMaterial({ 
+                color: cloudColor, 
+                transparent: true, 
+                opacity: 0.3,
+                depthWrite: false,
+                shininess: 50
+            });
+            const cloud = new THREE.Mesh(cloudGeo, cloudMat);
+            core.add(cloud);
+
+            return core;
+        }
+
+        // 组装分子
+        const molecule = new THREE.Group();
+        molecule.name = 'WaterMolecule';
+
+        const oxygen = createAtom('O');
+        molecule.add(oxygen);
+
+        const hydrogen1 = createAtom('H');
+        hydrogen1.position.set(
+            -hDistance * Math.sin(bondAngle / 2),
+            0,
+            hDistance * Math.cos(bondAngle / 2)
+        );
+        molecule.add(hydrogen1);
+
+        const hydrogen2 = createAtom('H');
+        hydrogen2.position.set(
+            hDistance * Math.sin(bondAngle / 2),
+            0,
+            -hDistance * Math.cos(bondAngle / 2)
+        );
+        molecule.add(hydrogen2);
+
+        scene.add(molecule);
+
+        // 动画
+        let isRotating = true;
+        function animate() {
+            requestAnimationFrame(animate);
+            if (isRotating) {
+                molecule.rotation.y += 0.005;
+                molecule.rotation.x += 0.002;
+            }
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // 事件监听
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        document.getElementById('reset').addEventListener('click', () => {
+            camera.position.set(0, 3, 8);
+            controls.reset();
+        });
+
+        document.getElementById('rotate').addEventListener('click', (e) => {
+            isRotating = !isRotating;
+            e.target.textContent = isRotating ? '暂停旋转' : '开始旋转';
+        });
+
+        document.getElementById('zoomIn').addEventListener('click', () => {
+            camera.position.multiplyScalar(0.9);
+        });
+
+        document.getElementById('zoomOut').addEventListener('click', () => {
+            camera.position.multiplyScalar(1.1);
+        });
+
+        // 导出glTF
+        document.getElementById('export').addEventListener('click', () => {
+            const exporter = new THREE.GLTFExporter();
+            exporter.parse(scene, (result) => {
+                const output = JSON.stringify(result, null, 2);
+                const blob = new Blob([output], { type: 'application/json' });
+                saveAs(blob, 'water_molecule_electron_cloud.gltf');
+            }, { trs: true, onlyVisible: true });
+        });
+    </script>
+</body>
+</html>
